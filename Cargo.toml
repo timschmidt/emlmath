@@ -2,5 +2,13 @@
 name = "emlmath"
 version = "0.1.0"
 edition = "2024"
+description = "A scientific math library based on the paper All elementary functions from a single binary operator by Andrzej Odrzywołek"
+authors = ["Timothy Schmidt <timschmidt@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/timschmidt/emlmath"
+readme = "README.md"
+
+keywords = ["math", "trigonometry", "scientific", "calculator"]
+categories = ["mathematics"]
 
 [dependencies]
