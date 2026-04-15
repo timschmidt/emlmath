@@ -1,6 +1,6 @@
 [package]
 name = "emlmath"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "A scientific math library based on the paper All elementary functions from a single binary operator by Andrzej Odrzywołek"
 authors = ["Timothy Schmidt <timschmidt@gmail.com>"]
