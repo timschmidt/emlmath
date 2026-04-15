@@ -8,6 +8,12 @@ pub struct Complex {
     pub im: f64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ComplexBall {
+    pub mid: Complex,
+    pub rad: f64,
+}
+
 impl Complex {
     pub const fn new(re: f64, im: f64) -> Self {
         Self { re, im }
@@ -149,6 +155,185 @@ impl Complex {
     }
 }
 
+impl ComplexBall {
+    pub fn new(mid: Complex, rad: f64) -> Self {
+        Self {
+            mid,
+            rad: rad.max(0.0),
+        }
+    }
+
+    pub fn point(mid: Complex) -> Self {
+        Self::new(mid, 0.0)
+    }
+
+    pub fn from_real(mid: f64, rad: f64) -> Self {
+        Self::new(Complex::new(mid, 0.0), rad)
+    }
+
+    pub fn contains(self, value: Complex) -> bool {
+        (value - self.mid).abs() <= self.rad
+    }
+
+    pub fn abs_upper(self) -> f64 {
+        self.mid.abs() + self.rad
+    }
+
+    pub fn contains_zero(self) -> bool {
+        self.mid.abs() <= self.rad
+    }
+
+    pub fn exp(self) -> Self {
+        let mid = self.mid.exp();
+        let rad = self.rad * (self.mid.re + self.rad).exp();
+        Self::new(mid, rad)
+    }
+
+    pub fn ln(self) -> Result<Self, BallEvalError> {
+        if self.contains_zero() {
+            return Err(BallEvalError::ContainsSingularity("ln"));
+        }
+        if self.crosses_nonpositive_real_axis() {
+            return Err(BallEvalError::CrossesBranchCut("ln"));
+        }
+
+        let clearance = self.mid.abs() - self.rad;
+        let rad = self.rad / clearance;
+        Ok(Self::new(self.mid.ln(), rad))
+    }
+
+    pub fn eml_log(self) -> Result<Self, BallEvalError> {
+        if self.contains_zero() {
+            return Err(BallEvalError::ContainsSingularity("eml_log"));
+        }
+        if self.crosses_nonpositive_real_axis() {
+            return Err(BallEvalError::CrossesBranchCut("eml_log"));
+        }
+
+        let clearance = self.mid.abs() - self.rad;
+        let rad = self.rad / clearance;
+        Ok(Self::new(self.mid.eml_log(), rad))
+    }
+
+    pub fn reciprocal(self) -> Result<Self, BallEvalError> {
+        if self.contains_zero() {
+            return Err(BallEvalError::ContainsSingularity("reciprocal"));
+        }
+
+        let mid_abs = self.mid.abs();
+        let clearance = mid_abs - self.rad;
+        let rad = self.rad / (mid_abs * clearance);
+        Ok(Self::new(Complex::one() / self.mid, rad))
+    }
+
+    pub fn checked_div(self, rhs: Self) -> Result<Self, BallEvalError> {
+        Ok(self * rhs.reciprocal()?)
+    }
+
+    pub fn sqrt(self) -> Result<Self, BallEvalError> {
+        let half = Self::point(Complex::new(0.5, 0.0));
+        (half * self.ln()?).exp_checked()
+    }
+
+    pub fn sin(self) -> Result<Self, BallEvalError> {
+        let j = -Self::i();
+        let two_i = Self::point(Complex::new(2.0, 0.0)) * j;
+        let ix = j * self;
+        let neg_ix = -ix;
+        ix.exp_checked()?.sub(neg_ix.exp_checked()?)?.checked_div(two_i)
+    }
+
+    pub fn cos(self) -> Result<Self, BallEvalError> {
+        let j = -Self::i();
+        let ix = j * self;
+        let neg_ix = -ix;
+        ix.exp_checked()?.add(neg_ix.exp_checked()?)?.checked_div(Self::point(Complex::new(2.0, 0.0)))
+    }
+
+    pub fn tan(self) -> Result<Self, BallEvalError> {
+        self.sin()?.checked_div(self.cos()?)
+    }
+
+    pub fn sinh(self) -> Result<Self, BallEvalError> {
+        self.exp_checked()?
+            .sub((-self).exp_checked()?)?
+            .checked_div(Self::point(Complex::new(2.0, 0.0)))
+    }
+
+    pub fn cosh(self) -> Result<Self, BallEvalError> {
+        self.exp_checked()?
+            .add((-self).exp_checked()?)?
+            .checked_div(Self::point(Complex::new(2.0, 0.0)))
+    }
+
+    pub fn tanh(self) -> Result<Self, BallEvalError> {
+        self.sinh()?.checked_div(self.cosh()?)
+    }
+
+    pub fn powc(self, exponent: Self) -> Result<Self, BallEvalError> {
+        (exponent * self.ln()?).exp_checked()
+    }
+
+    pub fn asin(self) -> Result<Self, BallEvalError> {
+        let i = Self::i();
+        let one = Self::one();
+        let inner = i * self + (one - self * self).sqrt()?;
+        Ok((-i) * inner.ln()?)
+    }
+
+    pub fn acos(self) -> Result<Self, BallEvalError> {
+        let i = Self::i();
+        let one = Self::one();
+        let inner = self + i * (one - self * self).sqrt()?;
+        Ok((-i) * inner.ln()?)
+    }
+
+    pub fn atan(self) -> Result<Self, BallEvalError> {
+        let i = Self::i();
+        let half_i = Self::point(Complex::new(0.0, 0.5));
+        let left = (Self::one() - i * self).ln()?;
+        let right = (Self::one() + i * self).ln()?;
+        Ok(half_i * (left - right))
+    }
+
+    pub fn asinh(self) -> Result<Self, BallEvalError> {
+        (self + (self * self + Self::one()).sqrt()?).ln()
+    }
+
+    pub fn acosh(self) -> Result<Self, BallEvalError> {
+        (self + (self + Self::one()).sqrt()? * (self - Self::one()).sqrt()?).ln()
+    }
+
+    pub fn atanh(self) -> Result<Self, BallEvalError> {
+        let half = Self::point(Complex::new(0.5, 0.0));
+        Ok(half * ((Self::one() + self).ln()? - (Self::one() - self).ln()?))
+    }
+
+    pub fn one() -> Self {
+        Self::point(Complex::one())
+    }
+
+    pub fn i() -> Self {
+        Self::point(Complex::i())
+    }
+
+    fn exp_checked(self) -> Result<Self, BallEvalError> {
+        Ok(self.exp())
+    }
+
+    fn add(self, rhs: Self) -> Result<Self, BallEvalError> {
+        Ok(self + rhs)
+    }
+
+    fn sub(self, rhs: Self) -> Result<Self, BallEvalError> {
+        Ok(self - rhs)
+    }
+
+    fn crosses_nonpositive_real_axis(self) -> bool {
+        distance_to_nonpositive_real_axis(self.mid) <= self.rad
+    }
+}
+
 fn safe_scaled_component(scale: f64, factor: f64) -> f64 {
     if scale == 0.0 || factor == 0.0 {
         0.0
@@ -204,6 +389,39 @@ impl std::ops::Neg for Complex {
     }
 }
 
+impl std::ops::Add for ComplexBall {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self::new(self.mid + rhs.mid, self.rad + rhs.rad)
+    }
+}
+
+impl std::ops::Sub for ComplexBall {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self::new(self.mid - rhs.mid, self.rad + rhs.rad)
+    }
+}
+
+impl std::ops::Mul for ComplexBall {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        let rad = self.mid.abs() * rhs.rad + rhs.mid.abs() * self.rad + self.rad * rhs.rad;
+        Self::new(self.mid * rhs.mid, rad)
+    }
+}
+
+impl std::ops::Neg for ComplexBall {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Self::new(-self.mid, self.rad)
+    }
+}
+
 impl fmt::Display for Complex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.im == 0.0 {
@@ -213,6 +431,12 @@ impl fmt::Display for Complex {
             return write!(f, "{}i", self.im);
         }
         write!(f, "{} {:+}i", self.re, self.im)
+    }
+}
+
+impl fmt::Display for ComplexBall {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} +/- {}", self.mid, self.rad)
     }
 }
 
@@ -402,6 +626,40 @@ impl ScientificExpr {
         })
     }
 
+    pub fn eval_ball(
+        &self,
+        vars: &HashMap<String, ComplexBall>,
+    ) -> Result<ComplexBall, BallEvalError> {
+        Ok(match self {
+            Self::One => ComplexBall::one(),
+            Self::Var(name) => vars
+                .get(name)
+                .copied()
+                .ok_or_else(|| BallEvalError::UnknownVariable(name.clone()))?,
+            Self::Exp(expr) => expr.eval_ball(vars)?.exp(),
+            Self::Ln(expr) => expr.eval_ball(vars)?.ln()?,
+            Self::Neg(expr) => -expr.eval_ball(vars)?,
+            Self::Add(left, right) => left.eval_ball(vars)? + right.eval_ball(vars)?,
+            Self::Sub(left, right) => left.eval_ball(vars)? - right.eval_ball(vars)?,
+            Self::Mul(left, right) => left.eval_ball(vars)? * right.eval_ball(vars)?,
+            Self::Div(left, right) => left.eval_ball(vars)?.checked_div(right.eval_ball(vars)?)?,
+            Self::Pow(base, exponent) => base.eval_ball(vars)?.powc(exponent.eval_ball(vars)?)?,
+            Self::Sqrt(expr) => expr.eval_ball(vars)?.sqrt()?,
+            Self::Sin(expr) => expr.eval_ball(vars)?.sin()?,
+            Self::Cos(expr) => expr.eval_ball(vars)?.cos()?,
+            Self::Tan(expr) => expr.eval_ball(vars)?.tan()?,
+            Self::Sinh(expr) => expr.eval_ball(vars)?.sinh()?,
+            Self::Cosh(expr) => expr.eval_ball(vars)?.cosh()?,
+            Self::Tanh(expr) => expr.eval_ball(vars)?.tanh()?,
+            Self::Asin(expr) => expr.eval_ball(vars)?.asin()?,
+            Self::Acos(expr) => expr.eval_ball(vars)?.acos()?,
+            Self::Atan(expr) => expr.eval_ball(vars)?.atan()?,
+            Self::Asinh(expr) => expr.eval_ball(vars)?.asinh()?,
+            Self::Acosh(expr) => expr.eval_ball(vars)?.acosh()?,
+            Self::Atanh(expr) => expr.eval_ball(vars)?.atanh()?,
+        })
+    }
+
     pub fn to_eml(&self) -> EmlExpr {
         match self {
             Self::One => EmlExpr::one(),
@@ -455,6 +713,24 @@ impl EmlExpr {
                 let x = left.eval(vars)?;
                 let y = right.eval(vars)?;
                 Ok(x.exp() - y.eml_log())
+            }
+        }
+    }
+
+    pub fn eval_ball(
+        &self,
+        vars: &HashMap<String, ComplexBall>,
+    ) -> Result<ComplexBall, BallEvalError> {
+        match self {
+            Self::One => Ok(ComplexBall::one()),
+            Self::Var(name) => vars
+                .get(name)
+                .copied()
+                .ok_or_else(|| BallEvalError::UnknownVariable(name.clone())),
+            Self::Eml(left, right) => {
+                let x = left.eval_ball(vars)?;
+                let y = right.eval_ball(vars)?;
+                Ok(x.exp() - y.eml_log()?)
             }
         }
     }
@@ -649,6 +925,17 @@ pub enum EvalError {
     UnknownVariable(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BallEvalError {
+    UnknownVariable(String),
+    ContainsSingularity(&'static str),
+    CrossesBranchCut(&'static str),
+}
+
+fn distance_to_nonpositive_real_axis(z: Complex) -> f64 {
+    if z.re <= 0.0 { z.im.abs() } else { z.abs() }
+}
+
 pub fn eval_real(expr: &EmlExpr, assignments: &[(&str, f64)]) -> Result<Complex, EvalError> {
     let vars = assignments
         .iter()
@@ -666,6 +953,54 @@ pub fn eval_real_scientific(
         .map(|(name, value)| ((*name).to_string(), Complex::new(*value, 0.0)))
         .collect::<HashMap<_, _>>();
     expr.eval(&vars)
+}
+
+pub fn eval_ball(
+    expr: &EmlExpr,
+    assignments: &[(&str, ComplexBall)],
+) -> Result<ComplexBall, BallEvalError> {
+    let vars = assignments
+        .iter()
+        .map(|(name, value)| ((*name).to_string(), *value))
+        .collect::<HashMap<_, _>>();
+    expr.eval_ball(&vars)
+}
+
+pub fn eval_ball_scientific(
+    expr: &ScientificExpr,
+    assignments: &[(&str, ComplexBall)],
+) -> Result<ComplexBall, BallEvalError> {
+    let vars = assignments
+        .iter()
+        .map(|(name, value)| ((*name).to_string(), *value))
+        .collect::<HashMap<_, _>>();
+    expr.eval_ball(&vars)
+}
+
+pub fn eval_real_ball(
+    expr: &EmlExpr,
+    assignments: &[(&str, f64, f64)],
+) -> Result<ComplexBall, BallEvalError> {
+    let vars = assignments
+        .iter()
+        .map(|(name, value, radius)| {
+            ((*name).to_string(), ComplexBall::from_real(*value, *radius))
+        })
+        .collect::<HashMap<_, _>>();
+    expr.eval_ball(&vars)
+}
+
+pub fn eval_real_ball_scientific(
+    expr: &ScientificExpr,
+    assignments: &[(&str, f64, f64)],
+) -> Result<ComplexBall, BallEvalError> {
+    let vars = assignments
+        .iter()
+        .map(|(name, value, radius)| {
+            ((*name).to_string(), ComplexBall::from_real(*value, *radius))
+        })
+        .collect::<HashMap<_, _>>();
+    expr.eval_ball(&vars)
 }
 
 pub fn x() -> EmlExpr {
@@ -712,6 +1047,13 @@ mod tests {
         assert!(
             complex_close(actual, expected, tol),
             "actual={actual:?} expected={expected:?} tol={tol}"
+        );
+    }
+
+    fn assert_ball_contains(ball: ComplexBall, expected: Complex) {
+        assert!(
+            ball.contains(expected),
+            "ball={ball:?} expected point={expected:?}"
         );
     }
 
@@ -875,5 +1217,56 @@ mod tests {
             1e-12,
         );
         assert!(ScientificExpr::pi().to_eml().node_count() > 1);
+    }
+
+    #[test]
+    fn ball_eval_tracks_real_uncertainty() {
+        let expr = ScientificExpr::add(ScientificExpr::sin(sx()), ScientificExpr::sqrt(sy()));
+        let ball =
+            eval_real_ball_scientific(&expr, &[("x", 0.5, 1e-6), ("y", 9.0, 1e-6)]).unwrap();
+
+        assert!(ball.rad > 0.0);
+
+        for x_value in [0.5 - 1e-6, 0.5, 0.5 + 1e-6] {
+            for y_value in [9.0 - 1e-6, 9.0, 9.0 + 1e-6] {
+                let point = eval_real_scientific(&expr, &[("x", x_value), ("y", y_value)]).unwrap();
+                assert_ball_contains(ball, point);
+            }
+        }
+    }
+
+    #[test]
+    fn ball_eval_matches_eml_tree_enclosure() {
+        let expr = EmlExpr::eml(x(), y());
+        let ball = eval_real_ball(&expr, &[("x", 0.2, 1e-6), ("y", 2.0, 1e-6)]).unwrap();
+
+        for x_value in [0.2 - 1e-6, 0.2, 0.2 + 1e-6] {
+            for y_value in [2.0 - 1e-6, 2.0, 2.0 + 1e-6] {
+                let point = eval_real(&expr, &[("x", x_value), ("y", y_value)]).unwrap();
+                assert_ball_contains(ball, point);
+            }
+        }
+    }
+
+    #[test]
+    fn ln_ball_rejects_branch_cut_crossing() {
+        let err = eval_ball_scientific(
+            &ScientificExpr::ln(sx()),
+            &[("x", ComplexBall::from_real(-1.0, 0.25))],
+        )
+        .unwrap_err();
+
+        assert_eq!(err, BallEvalError::CrossesBranchCut("ln"));
+    }
+
+    #[test]
+    fn reciprocal_ball_rejects_zero() {
+        let err = eval_ball_scientific(
+            &ScientificExpr::div(ScientificExpr::one(), sx()),
+            &[("x", ComplexBall::from_real(0.0, 0.1))],
+        )
+        .unwrap_err();
+
+        assert_eq!(err, BallEvalError::ContainsSingularity("reciprocal"));
     }
 }

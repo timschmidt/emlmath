@@ -5,6 +5,7 @@
 The repository currently contains:
 
 - A `Complex` number type with the operations needed to evaluate elementary functions.
+- A `ComplexBall` type for midpoint-plus-radius error bounds during tree evaluation.
 - A low-level `EmlExpr` tree that only uses `1`, variables, and the `eml(left, right)` operator.
 - A higher-level `ScientificExpr` tree with familiar functions like `sin`, `sqrt`, `atanh`, and `pow`, plus a compiler to `EmlExpr`.
 - A small demo binary in [`src/main.rs`](/home/tim/Documents/GitHub/emlmath/src/main.rs).
@@ -31,6 +32,11 @@ Typical workflow:
 2. Optionally convert a `ScientificExpr` into `EmlExpr` with `to_eml()`.
 3. Evaluate the expression with real variable assignments using `eval_real` / `eval_real_scientific`, or evaluate directly with complex assignments via `eval`.
 
+For bound tracking, the crate also exposes ball-arithmetic evaluators:
+
+- `eval_ball` / `eval_ball_scientific` for explicit `ComplexBall` assignments
+- `eval_real_ball` / `eval_real_ball_scientific` for real inputs with scalar radii
+
 Supported derived operations include:
 
 - Arithmetic: `add`, `sub`, `mul`, `div`, `pow`, `reciprocal`
@@ -38,6 +44,35 @@ Supported derived operations include:
 - Elementary functions: `exp`, `ln`, `sqrt`
 - Trigonometric and hyperbolic functions: `sin`, `cos`, `tan`, `sinh`, `cosh`, `tanh`
 - Inverse functions: `asin`, `acos`, `atan`, `asinh`, `acosh`, `atanh`
+
+## Ball Arithmetic
+
+`emlmath` can evaluate expression trees with conservative midpoint-plus-radius bounds using `ComplexBall`. This is useful when you want an enclosure for the result instead of a single point value.
+
+Example:
+
+```rust
+use emlmath::{ComplexBall, ScientificExpr, eval_ball_scientific, sx};
+
+fn main() {
+    let expr = ScientificExpr::ln(ScientificExpr::add(sx(), ScientificExpr::one()));
+    let value = eval_ball_scientific(
+        &expr,
+        &[("x", ComplexBall::from_real(0.5, 1e-6))],
+    )
+    .unwrap();
+
+    println!("value = {}", value);
+}
+```
+
+The ball evaluator is conservative and explicit about unsafe regions:
+
+- `ln` and the `eml` operator reject balls that contain zero.
+- `ln` and `eml_log` reject balls that cross the nonpositive real axis.
+- Division rejects denominator balls that contain zero.
+
+When those cases occur, evaluation returns a `BallEvalError` instead of silently producing an invalid bound.
 
 ## Example
 
@@ -82,6 +117,8 @@ This is an experimental math/code exploration project, not a production numerica
 - Numerical behavior follows the crate's custom `Complex` implementation rather than a battle-tested external library.
 - Branch handling is intentionally tailored to make the compiled `eml` forms agree with the project's expected logarithm behavior.
 - The generated `EmlExpr` trees can become very large very quickly.
+- Ball-arithmetic bounds are conservative and can widen substantially on deep compiled `EmlExpr` trees.
+- Some expressions that are well-defined at a point may still be rejected in ball mode if the enclosing ball touches a singularity or branch cut.
 
 ## License
 
