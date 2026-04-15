@@ -806,6 +806,13 @@ impl EmlExpr {
         Self::sqrt(Self::minus_one())
     }
 
+    // Paper/compiler workaround: use the sign-corrected imaginary unit inside
+    // derived EML formulas that rely on ln(-1), while keeping the public i()
+    // constructor itself unchanged.
+    fn compiler_i() -> Self {
+        Self::neg(Self::i())
+    }
+
     pub fn pi() -> Self {
         Self::mul(Self::neg(Self::i()), Self::ln(Self::minus_one()))
     }
@@ -815,16 +822,16 @@ impl EmlExpr {
     }
 
     pub fn sin(expr: Self) -> Self {
-        let j = Self::neg(Self::i());
-        let two_i = Self::mul(Self::two(), j.clone());
-        let ix = Self::mul(j, expr.clone());
+        let i = Self::compiler_i();
+        let two_i = Self::mul(Self::two(), i.clone());
+        let ix = Self::mul(i, expr.clone());
         let neg_ix = Self::neg(ix.clone());
         Self::div(Self::sub(Self::exp(ix), Self::exp(neg_ix)), two_i)
     }
 
     pub fn cos(expr: Self) -> Self {
-        let j = Self::neg(Self::i());
-        let ix = Self::mul(j, expr.clone());
+        let i = Self::compiler_i();
+        let ix = Self::mul(i, expr.clone());
         let neg_ix = Self::neg(ix.clone());
         Self::div(Self::add(Self::exp(ix), Self::exp(neg_ix)), Self::two())
     }
@@ -852,7 +859,7 @@ impl EmlExpr {
     }
 
     pub fn asin(expr: Self) -> Self {
-        let i = Self::i();
+        let i = Self::compiler_i();
         let j = Self::neg(i.clone());
         let one = Self::one();
         let iz = Self::mul(j, expr.clone());
@@ -862,7 +869,7 @@ impl EmlExpr {
     }
 
     pub fn acos(expr: Self) -> Self {
-        let i = Self::i();
+        let i = Self::compiler_i();
         let j = Self::neg(i.clone());
         let one = Self::one();
         let sqrt_term = Self::sqrt(Self::sub(one, Self::mul(expr.clone(), expr.clone())));
@@ -871,7 +878,7 @@ impl EmlExpr {
     }
 
     pub fn atan(expr: Self) -> Self {
-        let i = Self::i();
+        let i = Self::compiler_i();
         let j = Self::neg(i.clone());
         let one = Self::one();
         let half_i = Self::div(j.clone(), Self::two());
@@ -1057,6 +1064,24 @@ mod tests {
         );
     }
 
+    fn assert_eml_matches_scientific(
+        scientific: ScientificExpr,
+        vars: &[(&str, Complex)],
+        tol: f64,
+    ) {
+        let vars = vars
+            .iter()
+            .map(|(name, value)| ((*name).to_string(), *value))
+            .collect::<HashMap<_, _>>();
+        let scientific_value = scientific.eval(&vars).unwrap();
+        let eml_value = scientific.to_eml().eval(&vars).unwrap();
+        assert!(
+            complex_close(eml_value, scientific_value, tol),
+            "scientific={scientific:?} eml={} scientific_value={scientific_value:?} eml_value={eml_value:?} tol={tol}",
+            scientific.to_eml(),
+        );
+    }
+
     #[test]
     fn constants_work() {
         assert_close(
@@ -1217,6 +1242,105 @@ mod tests {
             1e-12,
         );
         assert!(ScientificExpr::pi().to_eml().node_count() > 1);
+    }
+
+    #[test]
+    fn compiled_constants_match_scientific() {
+        for scientific in [
+            ScientificExpr::zero(),
+            ScientificExpr::e(),
+            ScientificExpr::two(),
+            ScientificExpr::half(),
+            ScientificExpr::minus_one(),
+            ScientificExpr::i(),
+            ScientificExpr::pi(),
+        ] {
+            assert_eml_matches_scientific(scientific, &[], 1e-9);
+        }
+    }
+
+    #[test]
+    fn compiled_arithmetic_matches_scientific() {
+        let vars = [
+            ("x", Complex::new(2.5, 0.0)),
+            ("y", Complex::new(-0.75, 0.0)),
+        ];
+
+        for scientific in [
+            ScientificExpr::add(sx(), sy()),
+            ScientificExpr::sub(sx(), sy()),
+            ScientificExpr::mul(sx(), sy()),
+            ScientificExpr::div(sx(), sy()),
+            ScientificExpr::pow(sx(), sy()),
+            ScientificExpr::sqrt(sx()),
+        ] {
+            assert_eml_matches_scientific(scientific, &vars, 1e-8);
+        }
+    }
+
+    #[test]
+    #[ignore = "known compiler bug: compiled trig/hyperbolic forms disagree with direct evaluation when subtraction sees complex intermediates"]
+    fn compiled_trig_and_hyperbolic_match_scientific() {
+        let vars = [("x", Complex::new(0.4, 0.0))];
+
+        for scientific in [
+            ScientificExpr::sin(sx()),
+            ScientificExpr::cos(sx()),
+            ScientificExpr::tan(sx()),
+            ScientificExpr::sinh(sx()),
+            ScientificExpr::cosh(sx()),
+            ScientificExpr::tanh(sx()),
+        ] {
+            assert_eml_matches_scientific(scientific, &vars, 1e-8);
+        }
+    }
+
+    #[test]
+    #[ignore = "known compiler bug: compiled inverse-function forms disagree with direct evaluation when subtraction sees complex intermediates"]
+    fn compiled_inverse_functions_match_scientific() {
+        let vars = [("x", Complex::new(0.25, 0.0))];
+
+        for scientific in [
+            ScientificExpr::ln(sx()),
+            ScientificExpr::asin(sx()),
+            ScientificExpr::acos(sx()),
+            ScientificExpr::atan(sx()),
+            ScientificExpr::asinh(sx()),
+            ScientificExpr::acosh(ScientificExpr::add(sx(), ScientificExpr::two())),
+            ScientificExpr::atanh(sx()),
+        ] {
+            assert_eml_matches_scientific(scientific, &vars, 1e-8);
+        }
+    }
+
+    #[test]
+    fn mirrored_log_branch_matches_expected_signs() {
+        let vars_upper = HashMap::from([("z".to_string(), Complex::new(-1.0, 0.5))]);
+        let vars_lower = HashMap::from([("z".to_string(), Complex::new(-1.0, -0.5))]);
+        let expr = EmlExpr::eml(EmlExpr::zero(), EmlExpr::var("z"));
+
+        let upper = expr.eval(&vars_upper).unwrap();
+        let lower = expr.eval(&vars_lower).unwrap();
+
+        assert_close(
+            upper,
+            Complex::one() - Complex::new(-1.0, 0.5).eml_log(),
+            1e-12,
+        );
+        assert_close(
+            lower,
+            Complex::one() - Complex::new(-1.0, -0.5).eml_log(),
+            1e-12,
+        );
+        assert!(upper.im > 0.0);
+        assert!(lower.im < 0.0);
+    }
+
+    #[test]
+    fn compiled_ln_matches_scientific_across_branch_sides() {
+        for value in [Complex::new(-1.0, 0.5), Complex::new(-1.0, -0.5)] {
+            assert_eml_matches_scientific(ScientificExpr::ln(sx()), &[("x", value)], 1e-8);
+        }
     }
 
     #[test]

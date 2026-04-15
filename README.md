@@ -74,6 +74,17 @@ The ball evaluator is conservative and explicit about unsafe regions:
 
 When those cases occur, evaluation returns a `BallEvalError` instead of silently producing an invalid bound.
 
+## Branch Handling
+
+EML compilation is branch-sensitive because `eml(x, y)` is defined in terms of `exp` and `ln`, and the compiled `ln` tree crosses the negative real axis internally.
+
+This crate implements the paper's partial branch-handling solution in two places:
+
+- `EmlExpr` evaluation uses a mirrored logarithm branch internally so that compiled `ln(z)` matches the standard principal branch across the negative real axis.
+- The compiler uses a sign-corrected internal `i` when building derived `EmlExpr` formulas that depend on the branch convention.
+
+These choices are enough to make compiled `ln` and the mirrored-log branch behavior consistent with the intended principal-branch output.
+
 ## Example
 
 ```rust
@@ -91,12 +102,13 @@ fn main() {
 ```
 
 The bundled demo binary uses the same idea with `EmlExpr` directly:
+The bundled demo binary builds the expression as `ScientificExpr`, compiles it to `EmlExpr` for inspection, and prints both the direct point evaluation and a ball-arithmetic enclosure:
 
 ```bash
 cargo run
 ```
 
-At the time of writing, that example produces an `EmlExpr` with `715` nodes for `sin(x) + sqrt(y)`, which shows how quickly the single-operator representation expands.
+At the time of writing, that example produces an `EmlExpr` with `715` nodes for `sin(x) + sqrt(y)`, together with the direct value and a conservative error ball. This shows both how quickly the single-operator representation expands and how the new bound-tracking path can be used alongside the direct evaluator.
 
 ## Development
 
@@ -116,6 +128,8 @@ This is an experimental math/code exploration project, not a production numerica
 - The public API is still minimal and may change freely.
 - Numerical behavior follows the crate's custom `Complex` implementation rather than a battle-tested external library.
 - Branch handling is intentionally tailored to make the compiled `eml` forms agree with the project's expected logarithm behavior.
+- The paper's branch workaround is only partial: compiled `ln` is validated, but some higher derived `EmlExpr` constructors still do not match direct `ScientificExpr` evaluation when complex intermediate values appear.
+- In particular, compiled trigonometric/hyperbolic and some inverse-function formulas still have known equivalence gaps; the test suite keeps those checks as ignored regression targets until the compiler identities are re-derived correctly.
 - The generated `EmlExpr` trees can become very large very quickly.
 - Ball-arithmetic bounds are conservative and can widen substantially on deep compiled `EmlExpr` trees.
 - Some expressions that are well-defined at a point may still be rejected in ball mode if the enclosing ball touches a singularity or branch cut.
