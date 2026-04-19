@@ -6,6 +6,7 @@ The repository currently contains:
 
 - A `Complex` number type with the operations needed to evaluate elementary functions.
 - A `ComplexBall` type for midpoint-plus-radius error bounds during tree evaluation.
+- An experimental `EmlCoordExpr` surface language with `a + ε b` syntax that lowers to the existing backend.
 - A low-level `EmlExpr` tree that only uses `1`, variables, and the `eml(left, right)` operator.
 - A higher-level `ScientificExpr` tree with familiar functions like `sin`, `sqrt`, `atanh`, and `pow`, plus a compiler to `EmlExpr`.
 - A small demo binary in [`src/main.rs`](/home/tim/Documents/GitHub/emlmath/src/main.rs).
@@ -44,6 +45,8 @@ Supported derived operations include:
 - Elementary functions: `exp`, `ln`, `sqrt`
 - Trigonometric and hyperbolic functions: `sin`, `cos`, `tan`, `sinh`, `cosh`, `tanh`
 - Inverse functions: `asin`, `acos`, `atan`, `asinh`, `acosh`, `atanh`
+
+An experimental surface parser for “EML algebraic coordinates” is also available. It accepts expressions like `x + ε y`, keeps that form in a frontend AST, and lowers them into ordinary `ScientificExpr`/`EmlExpr` trees. The design is documented in [`doc/eml-algebraic-coordinates.md`](/home/tim/Documents/GitHub/emlmath/doc/eml-algebraic-coordinates.md).
 
 ## Ball Arithmetic
 

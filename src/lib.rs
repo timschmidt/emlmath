@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::f64::consts::{FRAC_PI_2, PI};
 use std::fmt;
+use std::str::FromStr;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Complex {
@@ -584,7 +585,7 @@ impl ScientificExpr {
     }
 
     pub fn minus_one() -> Self {
-        Self::neg(Self::one())
+        Self::sub(Self::zero(), Self::one())
     }
 
     pub fn i() -> Self {
@@ -592,7 +593,7 @@ impl ScientificExpr {
     }
 
     pub fn pi() -> Self {
-        Self::neg(Self::div(Self::ln(Self::minus_one()), Self::i()))
+        Self::mul(Self::neg(Self::i()), Self::ln(Self::minus_one()))
     }
 
     pub fn eval(&self, vars: &HashMap<String, Complex>) -> Result<Complex, EvalError> {
@@ -758,16 +759,24 @@ impl EmlExpr {
         Self::ln(Self::one())
     }
 
-    pub fn sub(left: Self, right: Self) -> Self {
+    fn sub_raw(left: Self, right: Self) -> Self {
         Self::eml(Self::ln(left), Self::exp(right))
     }
 
+    fn neg_raw(expr: Self) -> Self {
+        Self::sub_raw(Self::zero(), expr)
+    }
+
+    pub fn sub(left: Self, right: Self) -> Self {
+        Self::add(left, Self::neg(right))
+    }
+
     pub fn neg(expr: Self) -> Self {
-        Self::sub(Self::zero(), expr)
+        Self::mul(Self::minus_one(), expr)
     }
 
     pub fn add(left: Self, right: Self) -> Self {
-        Self::sub(left, Self::neg(right))
+        Self::sub_raw(left, Self::neg_raw(right))
     }
 
     pub fn e() -> Self {
@@ -783,7 +792,7 @@ impl EmlExpr {
     }
 
     pub fn div(left: Self, right: Self) -> Self {
-        Self::exp(Self::sub(Self::ln(left), Self::ln(right)))
+        Self::mul(left, Self::reciprocal(right))
     }
 
     pub fn pow(base: Self, exponent: Self) -> Self {
@@ -799,7 +808,7 @@ impl EmlExpr {
     }
 
     pub fn minus_one() -> Self {
-        Self::neg(Self::one())
+        Self::neg_raw(Self::one())
     }
 
     pub fn i() -> Self {
@@ -1046,6 +1055,704 @@ pub fn reference_half_pi() -> Complex {
     Complex::new(FRAC_PI_2, 0.0)
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SurfaceScalarExpr {
+    One,
+    Var(String),
+    E,
+    I,
+    Pi,
+    Neg(Box<SurfaceScalarExpr>),
+    Add(Box<SurfaceScalarExpr>, Box<SurfaceScalarExpr>),
+    Sub(Box<SurfaceScalarExpr>, Box<SurfaceScalarExpr>),
+    Mul(Box<SurfaceScalarExpr>, Box<SurfaceScalarExpr>),
+    Div(Box<SurfaceScalarExpr>, Box<SurfaceScalarExpr>),
+    Pow(Box<SurfaceScalarExpr>, Box<SurfaceScalarExpr>),
+    Exp(Box<SurfaceScalarExpr>),
+    Ln(Box<SurfaceScalarExpr>),
+    Sqrt(Box<SurfaceScalarExpr>),
+    Sin(Box<SurfaceScalarExpr>),
+    Cos(Box<SurfaceScalarExpr>),
+    Tan(Box<SurfaceScalarExpr>),
+    Sinh(Box<SurfaceScalarExpr>),
+    Cosh(Box<SurfaceScalarExpr>),
+    Tanh(Box<SurfaceScalarExpr>),
+    Asin(Box<SurfaceScalarExpr>),
+    Acos(Box<SurfaceScalarExpr>),
+    Atan(Box<SurfaceScalarExpr>),
+    Asinh(Box<SurfaceScalarExpr>),
+    Acosh(Box<SurfaceScalarExpr>),
+    Atanh(Box<SurfaceScalarExpr>),
+}
+
+impl SurfaceScalarExpr {
+    pub fn var(name: impl Into<String>) -> Self {
+        Self::Var(name.into())
+    }
+
+    pub fn to_scientific(&self) -> ScientificExpr {
+        match self {
+            Self::One => ScientificExpr::one(),
+            Self::Var(name) => ScientificExpr::var(name.clone()),
+            Self::E => ScientificExpr::e(),
+            Self::I => ScientificExpr::i(),
+            Self::Pi => ScientificExpr::pi(),
+            Self::Neg(expr) => ScientificExpr::neg(expr.to_scientific()),
+            Self::Add(left, right) => {
+                ScientificExpr::add(left.to_scientific(), right.to_scientific())
+            }
+            Self::Sub(left, right) => {
+                ScientificExpr::sub(left.to_scientific(), right.to_scientific())
+            }
+            Self::Mul(left, right) => {
+                ScientificExpr::mul(left.to_scientific(), right.to_scientific())
+            }
+            Self::Div(left, right) => {
+                ScientificExpr::div(left.to_scientific(), right.to_scientific())
+            }
+            Self::Pow(base, exponent) => {
+                ScientificExpr::pow(base.to_scientific(), exponent.to_scientific())
+            }
+            Self::Exp(expr) => ScientificExpr::exp(expr.to_scientific()),
+            Self::Ln(expr) => ScientificExpr::ln(expr.to_scientific()),
+            Self::Sqrt(expr) => ScientificExpr::sqrt(expr.to_scientific()),
+            Self::Sin(expr) => ScientificExpr::sin(expr.to_scientific()),
+            Self::Cos(expr) => ScientificExpr::cos(expr.to_scientific()),
+            Self::Tan(expr) => ScientificExpr::tan(expr.to_scientific()),
+            Self::Sinh(expr) => ScientificExpr::sinh(expr.to_scientific()),
+            Self::Cosh(expr) => ScientificExpr::cosh(expr.to_scientific()),
+            Self::Tanh(expr) => ScientificExpr::tanh(expr.to_scientific()),
+            Self::Asin(expr) => ScientificExpr::asin(expr.to_scientific()),
+            Self::Acos(expr) => ScientificExpr::acos(expr.to_scientific()),
+            Self::Atan(expr) => ScientificExpr::atan(expr.to_scientific()),
+            Self::Asinh(expr) => ScientificExpr::asinh(expr.to_scientific()),
+            Self::Acosh(expr) => ScientificExpr::acosh(expr.to_scientific()),
+            Self::Atanh(expr) => ScientificExpr::atanh(expr.to_scientific()),
+        }
+    }
+
+    fn precedence(&self) -> u8 {
+        match self {
+            Self::Add(_, _) | Self::Sub(_, _) => 1,
+            Self::Mul(_, _) | Self::Div(_, _) => 2,
+            Self::Pow(_, _) => 3,
+            Self::Neg(_) => 4,
+            Self::Exp(_)
+            | Self::Ln(_)
+            | Self::Sqrt(_)
+            | Self::Sin(_)
+            | Self::Cos(_)
+            | Self::Tan(_)
+            | Self::Sinh(_)
+            | Self::Cosh(_)
+            | Self::Tanh(_)
+            | Self::Asin(_)
+            | Self::Acos(_)
+            | Self::Atan(_)
+            | Self::Asinh(_)
+            | Self::Acosh(_)
+            | Self::Atanh(_) => 5,
+            Self::One | Self::Var(_) | Self::E | Self::I | Self::Pi => 6,
+        }
+    }
+
+    fn fmt_with_prec(&self, f: &mut fmt::Formatter<'_>, parent_prec: u8) -> fmt::Result {
+        let my_prec = self.precedence();
+        let needs_parens = my_prec < parent_prec;
+        if needs_parens {
+            write!(f, "(")?;
+        }
+        match self {
+            Self::One => write!(f, "1")?,
+            Self::Var(name) => write!(f, "{name}")?,
+            Self::E => write!(f, "e")?,
+            Self::I => write!(f, "i")?,
+            Self::Pi => write!(f, "pi")?,
+            Self::Neg(expr) => {
+                write!(f, "-")?;
+                expr.fmt_with_prec(f, my_prec)?;
+            }
+            Self::Add(left, right) => {
+                left.fmt_with_prec(f, my_prec)?;
+                write!(f, " + ")?;
+                right.fmt_with_prec(f, my_prec + 1)?;
+            }
+            Self::Sub(left, right) => {
+                left.fmt_with_prec(f, my_prec)?;
+                write!(f, " - ")?;
+                right.fmt_with_prec(f, my_prec + 1)?;
+            }
+            Self::Mul(left, right) => {
+                left.fmt_with_prec(f, my_prec)?;
+                write!(f, " * ")?;
+                right.fmt_with_prec(f, my_prec + 1)?;
+            }
+            Self::Div(left, right) => {
+                left.fmt_with_prec(f, my_prec)?;
+                write!(f, " / ")?;
+                right.fmt_with_prec(f, my_prec + 1)?;
+            }
+            Self::Pow(base, exponent) => {
+                base.fmt_with_prec(f, my_prec)?;
+                write!(f, "^")?;
+                exponent.fmt_with_prec(f, my_prec)?;
+            }
+            Self::Exp(expr) => write!(f, "exp({expr})")?,
+            Self::Ln(expr) => write!(f, "ln({expr})")?,
+            Self::Sqrt(expr) => write!(f, "sqrt({expr})")?,
+            Self::Sin(expr) => write!(f, "sin({expr})")?,
+            Self::Cos(expr) => write!(f, "cos({expr})")?,
+            Self::Tan(expr) => write!(f, "tan({expr})")?,
+            Self::Sinh(expr) => write!(f, "sinh({expr})")?,
+            Self::Cosh(expr) => write!(f, "cosh({expr})")?,
+            Self::Tanh(expr) => write!(f, "tanh({expr})")?,
+            Self::Asin(expr) => write!(f, "asin({expr})")?,
+            Self::Acos(expr) => write!(f, "acos({expr})")?,
+            Self::Atan(expr) => write!(f, "atan({expr})")?,
+            Self::Asinh(expr) => write!(f, "asinh({expr})")?,
+            Self::Acosh(expr) => write!(f, "acosh({expr})")?,
+            Self::Atanh(expr) => write!(f, "atanh({expr})")?,
+        }
+        if needs_parens {
+            write!(f, ")")?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for SurfaceScalarExpr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_with_prec(f, 0)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EmlCoordExpr {
+    Scalar(SurfaceScalarExpr),
+    Coord(SurfaceScalarExpr, SurfaceScalarExpr),
+    Add(Box<EmlCoordExpr>, Box<EmlCoordExpr>),
+    Sub(Box<EmlCoordExpr>, Box<EmlCoordExpr>),
+    ScalarMul(Box<SurfaceScalarExpr>, Box<EmlCoordExpr>),
+    Mul(Box<EmlCoordExpr>, Box<EmlCoordExpr>),
+}
+
+impl EmlCoordExpr {
+    pub fn scalar(expr: SurfaceScalarExpr) -> Self {
+        Self::Scalar(expr)
+    }
+
+    pub fn coord(a: SurfaceScalarExpr, b: SurfaceScalarExpr) -> Self {
+        Self::Coord(a, b)
+    }
+
+    pub fn add(left: Self, right: Self) -> Self {
+        Self::Add(Box::new(left), Box::new(right))
+    }
+
+    pub fn sub(left: Self, right: Self) -> Self {
+        Self::Sub(Box::new(left), Box::new(right))
+    }
+
+    pub fn scalar_mul(scalar: SurfaceScalarExpr, expr: Self) -> Self {
+        Self::ScalarMul(Box::new(scalar), Box::new(expr))
+    }
+
+    pub fn mul(left: Self, right: Self) -> Self {
+        match (left.as_scalar(), right.as_scalar()) {
+            (Some(left_scalar), Some(right_scalar)) => {
+                Self::Scalar(SurfaceScalarExpr::Mul(
+                    Box::new(left_scalar),
+                    Box::new(right_scalar),
+                ))
+            }
+            (Some(left_scalar), None) => Self::scalar_mul(left_scalar, right),
+            (None, Some(right_scalar)) => Self::scalar_mul(right_scalar, left),
+            (None, None) => Self::Mul(Box::new(left), Box::new(right)),
+        }
+    }
+
+    pub fn to_scientific(&self) -> ScientificExpr {
+        match self {
+            Self::Scalar(expr) => expr.to_scientific(),
+            Self::Coord(a, b) => {
+                ScientificExpr::sub(ScientificExpr::exp(a.to_scientific()), ScientificExpr::ln(b.to_scientific()))
+            }
+            Self::Add(left, right) => {
+                ScientificExpr::add(left.to_scientific(), right.to_scientific())
+            }
+            Self::Sub(left, right) => {
+                ScientificExpr::sub(left.to_scientific(), right.to_scientific())
+            }
+            Self::ScalarMul(scalar, expr) => {
+                ScientificExpr::mul(scalar.to_scientific(), expr.to_scientific())
+            }
+            Self::Mul(left, right) => {
+                ScientificExpr::mul(left.to_scientific(), right.to_scientific())
+            }
+        }
+    }
+
+    pub fn to_eml(&self) -> EmlExpr {
+        self.to_scientific().to_eml()
+    }
+
+    fn as_scalar(&self) -> Option<SurfaceScalarExpr> {
+        match self {
+            Self::Scalar(expr) => Some(expr.clone()),
+            _ => None,
+        }
+    }
+
+    fn precedence(&self) -> u8 {
+        match self {
+            Self::Add(_, _) | Self::Sub(_, _) => 1,
+            Self::ScalarMul(_, _) | Self::Mul(_, _) => 2,
+            Self::Coord(_, _) => 1,
+            Self::Scalar(_) => 3,
+        }
+    }
+
+    fn fmt_with_prec(&self, f: &mut fmt::Formatter<'_>, parent_prec: u8) -> fmt::Result {
+        let my_prec = self.precedence();
+        let needs_parens = my_prec < parent_prec;
+        if needs_parens {
+            write!(f, "(")?;
+        }
+        match self {
+            Self::Scalar(expr) => expr.fmt_with_prec(f, 0)?,
+            Self::Coord(a, b) => {
+                a.fmt_with_prec(f, 0)?;
+                match b {
+                    SurfaceScalarExpr::Neg(inner) => {
+                        write!(f, " - ε ")?;
+                        inner.fmt_with_prec(f, 0)?;
+                    }
+                    _ => {
+                        write!(f, " + ε ")?;
+                        b.fmt_with_prec(f, 0)?;
+                    }
+                }
+            }
+            Self::Add(left, right) => {
+                left.fmt_with_prec(f, my_prec)?;
+                write!(f, " + ")?;
+                right.fmt_with_prec(f, my_prec + 1)?;
+            }
+            Self::Sub(left, right) => {
+                left.fmt_with_prec(f, my_prec)?;
+                write!(f, " - ")?;
+                right.fmt_with_prec(f, my_prec + 1)?;
+            }
+            Self::ScalarMul(scalar, expr) => {
+                scalar.fmt_with_prec(f, my_prec)?;
+                write!(f, " * ")?;
+                expr.fmt_with_prec(f, my_prec + 1)?;
+            }
+            Self::Mul(left, right) => {
+                left.fmt_with_prec(f, my_prec)?;
+                write!(f, " * ")?;
+                right.fmt_with_prec(f, my_prec + 1)?;
+            }
+        }
+        if needs_parens {
+            write!(f, ")")?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for EmlCoordExpr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_with_prec(f, 0)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SurfaceParseError {
+    pub message: String,
+}
+
+impl SurfaceParseError {
+    fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+impl fmt::Display for SurfaceParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for SurfaceParseError {}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum SurfaceToken {
+    One,
+    Ident(String),
+    Epsilon,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Caret,
+    LParen,
+    RParen,
+}
+
+fn tokenize_surface(input: &str) -> Result<Vec<SurfaceToken>, SurfaceParseError> {
+    let mut tokens = Vec::new();
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.peek().copied() {
+        match ch {
+            ' ' | '\t' | '\n' | '\r' => {
+                chars.next();
+            }
+            '1' => {
+                chars.next();
+                tokens.push(SurfaceToken::One);
+            }
+            '+' => {
+                chars.next();
+                tokens.push(SurfaceToken::Plus);
+            }
+            '-' => {
+                chars.next();
+                tokens.push(SurfaceToken::Minus);
+            }
+            '*' => {
+                chars.next();
+                tokens.push(SurfaceToken::Star);
+            }
+            '/' => {
+                chars.next();
+                tokens.push(SurfaceToken::Slash);
+            }
+            '^' => {
+                chars.next();
+                tokens.push(SurfaceToken::Caret);
+            }
+            '(' => {
+                chars.next();
+                tokens.push(SurfaceToken::LParen);
+            }
+            ')' => {
+                chars.next();
+                tokens.push(SurfaceToken::RParen);
+            }
+            'ε' => {
+                chars.next();
+                tokens.push(SurfaceToken::Epsilon);
+            }
+            c if c.is_ascii_alphabetic() || c == '_' => {
+                let mut ident = String::new();
+                while let Some(next) = chars.peek().copied() {
+                    if next.is_ascii_alphanumeric() || next == '_' {
+                        ident.push(next);
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+                match ident.as_str() {
+                    "eps" | "epsilon" => tokens.push(SurfaceToken::Epsilon),
+                    _ => tokens.push(SurfaceToken::Ident(ident)),
+                }
+            }
+            _ => {
+                return Err(SurfaceParseError::new(format!(
+                    "unexpected character `{ch}` in surface expression"
+                )));
+            }
+        }
+    }
+
+    Ok(tokens)
+}
+
+struct SurfaceParser {
+    tokens: Vec<SurfaceToken>,
+    pos: usize,
+}
+
+impl SurfaceParser {
+    fn new(tokens: Vec<SurfaceToken>) -> Self {
+        Self { tokens, pos: 0 }
+    }
+
+    fn parse_coord_expr(&mut self) -> Result<EmlCoordExpr, SurfaceParseError> {
+        let expr = self.parse_coord_sum()?;
+        if self.pos != self.tokens.len() {
+            return Err(SurfaceParseError::new("unexpected trailing tokens"));
+        }
+        Ok(expr)
+    }
+
+    fn parse_coord_sum(&mut self) -> Result<EmlCoordExpr, SurfaceParseError> {
+        let mut expr = self.parse_coord_product()?;
+        loop {
+            match self.peek() {
+                Some(SurfaceToken::Plus) => {
+                    self.pos += 1;
+                    let rhs = self.parse_coord_product()?;
+                    expr = EmlCoordExpr::add(expr, rhs);
+                }
+                Some(SurfaceToken::Minus) => {
+                    self.pos += 1;
+                    let rhs = self.parse_coord_product()?;
+                    expr = EmlCoordExpr::sub(expr, rhs);
+                }
+                _ => return Ok(expr),
+            }
+        }
+    }
+
+    fn parse_coord_product(&mut self) -> Result<EmlCoordExpr, SurfaceParseError> {
+        let mut expr = self.parse_coord_atom()?;
+        while matches!(self.peek(), Some(SurfaceToken::Star)) {
+            self.pos += 1;
+            let rhs = self.parse_coord_atom()?;
+            expr = EmlCoordExpr::mul(expr, rhs);
+        }
+        Ok(expr)
+    }
+
+    fn parse_coord_atom(&mut self) -> Result<EmlCoordExpr, SurfaceParseError> {
+        if matches!(self.peek(), Some(SurfaceToken::LParen)) {
+            self.pos += 1;
+            let inner = self.parse_coord_sum()?;
+            self.expect(SurfaceToken::RParen)?;
+            return Ok(inner);
+        }
+
+        let scalar = self.parse_scalar_expr(true, true)?;
+        let coord = match (self.peek(), self.peek_n(1)) {
+            (Some(SurfaceToken::Plus), Some(SurfaceToken::Epsilon)) => {
+                self.pos += 2;
+                let rhs = self.parse_scalar_expr(false, false)?;
+                EmlCoordExpr::coord(scalar, rhs)
+            }
+            (Some(SurfaceToken::Minus), Some(SurfaceToken::Epsilon)) => {
+                self.pos += 2;
+                let rhs = self.parse_scalar_expr(false, false)?;
+                EmlCoordExpr::coord(scalar, SurfaceScalarExpr::Neg(Box::new(rhs)))
+            }
+            _ => EmlCoordExpr::scalar(scalar),
+        };
+        Ok(coord)
+    }
+
+    fn parse_scalar_expr(
+        &mut self,
+        stop_before_coord_suffix: bool,
+        stop_before_coord_product: bool,
+    ) -> Result<SurfaceScalarExpr, SurfaceParseError> {
+        self.parse_scalar_add_sub(stop_before_coord_suffix, stop_before_coord_product)
+    }
+
+    fn parse_scalar_add_sub(
+        &mut self,
+        stop_before_coord_suffix: bool,
+        stop_before_coord_product: bool,
+    ) -> Result<SurfaceScalarExpr, SurfaceParseError> {
+        let mut expr =
+            self.parse_scalar_mul_div(stop_before_coord_suffix, stop_before_coord_product)?;
+        loop {
+            match self.peek() {
+                Some(SurfaceToken::Plus)
+                    if stop_before_coord_suffix
+                        && matches!(self.peek_n(1), Some(SurfaceToken::Epsilon)) =>
+                {
+                    return Ok(expr);
+                }
+                Some(SurfaceToken::Minus)
+                    if stop_before_coord_suffix
+                        && matches!(self.peek_n(1), Some(SurfaceToken::Epsilon)) =>
+                {
+                    return Ok(expr);
+                }
+                Some(SurfaceToken::Plus) => {
+                    self.pos += 1;
+                    let rhs = self
+                        .parse_scalar_mul_div(stop_before_coord_suffix, stop_before_coord_product)?;
+                    expr = SurfaceScalarExpr::Add(Box::new(expr), Box::new(rhs));
+                }
+                Some(SurfaceToken::Minus) => {
+                    self.pos += 1;
+                    let rhs = self
+                        .parse_scalar_mul_div(stop_before_coord_suffix, stop_before_coord_product)?;
+                    expr = SurfaceScalarExpr::Sub(Box::new(expr), Box::new(rhs));
+                }
+                _ => return Ok(expr),
+            }
+        }
+    }
+
+    fn parse_scalar_mul_div(
+        &mut self,
+        stop_before_coord_suffix: bool,
+        stop_before_coord_product: bool,
+    ) -> Result<SurfaceScalarExpr, SurfaceParseError> {
+        let mut expr = self.parse_scalar_pow(stop_before_coord_suffix, stop_before_coord_product)?;
+        loop {
+            match self.peek() {
+                Some(SurfaceToken::Star) if stop_before_coord_product => return Ok(expr),
+                Some(SurfaceToken::Star) => {
+                    self.pos += 1;
+                    let rhs =
+                        self.parse_scalar_pow(stop_before_coord_suffix, stop_before_coord_product)?;
+                    expr = SurfaceScalarExpr::Mul(Box::new(expr), Box::new(rhs));
+                }
+                Some(SurfaceToken::Slash) => {
+                    self.pos += 1;
+                    let rhs =
+                        self.parse_scalar_pow(stop_before_coord_suffix, stop_before_coord_product)?;
+                    expr = SurfaceScalarExpr::Div(Box::new(expr), Box::new(rhs));
+                }
+                _ => return Ok(expr),
+            }
+        }
+    }
+
+    fn parse_scalar_pow(
+        &mut self,
+        stop_before_coord_suffix: bool,
+        stop_before_coord_product: bool,
+    ) -> Result<SurfaceScalarExpr, SurfaceParseError> {
+        let left =
+            self.parse_scalar_unary(stop_before_coord_suffix, stop_before_coord_product)?;
+        if matches!(self.peek(), Some(SurfaceToken::Caret)) {
+            self.pos += 1;
+            let right =
+                self.parse_scalar_pow(stop_before_coord_suffix, stop_before_coord_product)?;
+            return Ok(SurfaceScalarExpr::Pow(Box::new(left), Box::new(right)));
+        }
+        Ok(left)
+    }
+
+    fn parse_scalar_unary(
+        &mut self,
+        stop_before_coord_suffix: bool,
+        stop_before_coord_product: bool,
+    ) -> Result<SurfaceScalarExpr, SurfaceParseError> {
+        if matches!(self.peek(), Some(SurfaceToken::Minus)) {
+            self.pos += 1;
+            return Ok(SurfaceScalarExpr::Neg(Box::new(
+                self.parse_scalar_unary(stop_before_coord_suffix, stop_before_coord_product)?,
+            )));
+        }
+        self.parse_scalar_primary(stop_before_coord_suffix, stop_before_coord_product)
+    }
+
+    fn parse_scalar_primary(
+        &mut self,
+        stop_before_coord_suffix: bool,
+        stop_before_coord_product: bool,
+    ) -> Result<SurfaceScalarExpr, SurfaceParseError> {
+        match self.next() {
+            Some(SurfaceToken::One) => Ok(SurfaceScalarExpr::One),
+            Some(SurfaceToken::Ident(name)) => {
+                if matches!(self.peek(), Some(SurfaceToken::LParen)) {
+                    self.pos += 1;
+                    let arg = self.parse_scalar_expr(false, false)?;
+                    self.expect(SurfaceToken::RParen)?;
+                    self.build_function(name, arg)
+                } else {
+                    match name.as_str() {
+                        "e" => Ok(SurfaceScalarExpr::E),
+                        "i" => Ok(SurfaceScalarExpr::I),
+                        "pi" => Ok(SurfaceScalarExpr::Pi),
+                        _ => Ok(SurfaceScalarExpr::Var(name)),
+                    }
+                }
+            }
+            Some(SurfaceToken::LParen) => {
+                let expr = self.parse_scalar_expr(
+                    stop_before_coord_suffix,
+                    stop_before_coord_product,
+                )?;
+                self.expect(SurfaceToken::RParen)?;
+                Ok(expr)
+            }
+            Some(SurfaceToken::Epsilon) => {
+                Err(SurfaceParseError::new("ε must appear as `a + ε b` or `a - ε b`"))
+            }
+            other => Err(SurfaceParseError::new(format!(
+                "unexpected token {:?} while parsing scalar expression",
+                other
+            ))),
+        }
+    }
+
+    fn build_function(
+        &self,
+        name: String,
+        arg: SurfaceScalarExpr,
+    ) -> Result<SurfaceScalarExpr, SurfaceParseError> {
+        let boxed = Box::new(arg);
+        match name.as_str() {
+            "exp" => Ok(SurfaceScalarExpr::Exp(boxed)),
+            "ln" => Ok(SurfaceScalarExpr::Ln(boxed)),
+            "sqrt" => Ok(SurfaceScalarExpr::Sqrt(boxed)),
+            "sin" => Ok(SurfaceScalarExpr::Sin(boxed)),
+            "cos" => Ok(SurfaceScalarExpr::Cos(boxed)),
+            "tan" => Ok(SurfaceScalarExpr::Tan(boxed)),
+            "sinh" => Ok(SurfaceScalarExpr::Sinh(boxed)),
+            "cosh" => Ok(SurfaceScalarExpr::Cosh(boxed)),
+            "tanh" => Ok(SurfaceScalarExpr::Tanh(boxed)),
+            "asin" => Ok(SurfaceScalarExpr::Asin(boxed)),
+            "acos" => Ok(SurfaceScalarExpr::Acos(boxed)),
+            "atan" => Ok(SurfaceScalarExpr::Atan(boxed)),
+            "asinh" => Ok(SurfaceScalarExpr::Asinh(boxed)),
+            "acosh" => Ok(SurfaceScalarExpr::Acosh(boxed)),
+            "atanh" => Ok(SurfaceScalarExpr::Atanh(boxed)),
+            _ => Err(SurfaceParseError::new(format!(
+                "unknown scalar function `{name}`"
+            ))),
+        }
+    }
+
+    fn expect(&mut self, expected: SurfaceToken) -> Result<(), SurfaceParseError> {
+        let next = self.next();
+        if next == Some(expected.clone()) {
+            Ok(())
+        } else {
+            Err(SurfaceParseError::new(format!(
+                "expected {:?}, found {:?}",
+                expected, next
+            )))
+        }
+    }
+
+    fn next(&mut self) -> Option<SurfaceToken> {
+        let token = self.tokens.get(self.pos).cloned();
+        if token.is_some() {
+            self.pos += 1;
+        }
+        token
+    }
+
+    fn peek(&self) -> Option<&SurfaceToken> {
+        self.tokens.get(self.pos)
+    }
+
+    fn peek_n(&self, offset: usize) -> Option<&SurfaceToken> {
+        self.tokens.get(self.pos + offset)
+    }
+}
+
+impl FromStr for EmlCoordExpr {
+    type Err = SurfaceParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let tokens = tokenize_surface(s)?;
+        SurfaceParser::new(tokens).parse_coord_expr()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1279,7 +1986,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "known compiler bug: compiled trig/hyperbolic forms disagree with direct evaluation when subtraction sees complex intermediates"]
     fn compiled_trig_and_hyperbolic_match_scientific() {
         let vars = [("x", Complex::new(0.4, 0.0))];
 
@@ -1296,7 +2002,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "known compiler bug: compiled inverse-function forms disagree with direct evaluation when subtraction sees complex intermediates"]
     fn compiled_inverse_functions_match_scientific() {
         let vars = [("x", Complex::new(0.25, 0.0))];
 
@@ -1341,6 +2046,100 @@ mod tests {
         for value in [Complex::new(-1.0, 0.5), Complex::new(-1.0, -0.5)] {
             assert_eml_matches_scientific(ScientificExpr::ln(sx()), &[("x", value)], 1e-8);
         }
+    }
+
+    #[test]
+    fn coord_surface_parses_and_pretty_prints_literal() {
+        let expr: EmlCoordExpr = "x + ε y".parse().unwrap();
+
+        assert_eq!(
+            expr,
+            EmlCoordExpr::coord(SurfaceScalarExpr::var("x"), SurfaceScalarExpr::var("y"))
+        );
+        assert_eq!(expr.to_string(), "x + ε y");
+    }
+
+    #[test]
+    fn coord_surface_lowers_literal_to_eml_semantics() {
+        let expr: EmlCoordExpr = "x + ε y".parse().unwrap();
+        let lowered = expr.to_scientific();
+        let expected = ScientificExpr::sub(ScientificExpr::exp(sx()), ScientificExpr::ln(sy()));
+
+        assert_eq!(lowered, expected);
+
+        let value = lowered
+            .eval(&HashMap::from([
+                ("x".to_string(), Complex::new(0.5, 0.0)),
+                ("y".to_string(), Complex::new(2.0, 0.0)),
+            ]))
+            .unwrap();
+        assert_close(value, Complex::new(0.5_f64.exp() - 2.0_f64.ln(), 0.0), 1e-12);
+    }
+
+    #[test]
+    fn coord_surface_add_sub_lowers_through_scientific_expr() {
+        let expr: EmlCoordExpr = "(x + ε y) - (u - ε v)".parse().unwrap();
+        let lowered = expr.to_scientific();
+        let expected = ScientificExpr::sub(
+            ScientificExpr::sub(ScientificExpr::exp(sx()), ScientificExpr::ln(sy())),
+            ScientificExpr::sub(
+                ScientificExpr::exp(ScientificExpr::var("u")),
+                ScientificExpr::ln(ScientificExpr::neg(ScientificExpr::var("v"))),
+            ),
+        );
+
+        assert_eq!(lowered, expected);
+        assert_eq!(expr.to_string(), "x + ε y - (u - ε v)");
+    }
+
+    #[test]
+    fn coord_surface_scalar_multiply_is_preserved_in_ast_and_lowering() {
+        let expr: EmlCoordExpr = "a * (x + ε y)".parse().unwrap();
+
+        assert_eq!(
+            expr,
+            EmlCoordExpr::scalar_mul(
+                SurfaceScalarExpr::var("a"),
+                EmlCoordExpr::coord(SurfaceScalarExpr::var("x"), SurfaceScalarExpr::var("y"))
+            )
+        );
+        assert_eq!(expr.to_string(), "a * (x + ε y)");
+
+        let lowered = expr.to_scientific();
+        let expected = ScientificExpr::mul(
+            ScientificExpr::var("a"),
+            ScientificExpr::sub(ScientificExpr::exp(sx()), ScientificExpr::ln(sy())),
+        );
+        assert_eq!(lowered, expected);
+    }
+
+    #[test]
+    fn coord_surface_product_has_partial_support_via_lowering() {
+        let expr: EmlCoordExpr = "(x + ε y) * (u + ε v)".parse().unwrap();
+
+        assert_eq!(expr.to_string(), "(x + ε y) * (u + ε v)");
+        match expr {
+            EmlCoordExpr::Mul(_, _) => {}
+            other => panic!("expected general multiply node, got {other:?}"),
+        }
+
+        let lowered = expr.to_scientific();
+        let expected = ScientificExpr::mul(
+            ScientificExpr::sub(ScientificExpr::exp(sx()), ScientificExpr::ln(sy())),
+            ScientificExpr::sub(
+                ScientificExpr::exp(ScientificExpr::var("u")),
+                ScientificExpr::ln(ScientificExpr::var("v")),
+            ),
+        );
+        assert_eq!(lowered, expected);
+    }
+
+    #[test]
+    fn coord_surface_to_eml_uses_existing_backend() {
+        let expr: EmlCoordExpr = "sin(x) + ε sqrt(y)".parse().unwrap();
+        let scientific = expr.to_scientific();
+
+        assert_eq!(expr.to_eml(), scientific.to_eml());
     }
 
     #[test]
